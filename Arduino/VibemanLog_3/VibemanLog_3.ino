@@ -9,9 +9,10 @@ void setup() {
   }
 
   pinMode(BTNPIN, INPUT_PULLUP);
-  pinMode(POTPIN, INPUT);
+  pinMode(EMGPIN, INPUT);
   pinMode(LEDPIN, OUTPUT);
-         
+
+  analogReadRes(12);        // Changing ADC resolution to 12 bits (4095)
   analogReadAveraging(32);      // Averaging analog input helps prevent jitter
 
   // Display some sort of logo?
@@ -44,13 +45,16 @@ void loop() {
   // put your main code here, to run repeatedly:
   //readRadio();
   btn = btnCheck();
-  pot = analogRead(POTPIN);
+   //pot = analogRead(POTPIN);
   if (btn == LONG) {
     recording = !recording;
     rec = 0;
   }
   
   updateRec();
+#ifdef DEBUG
+  Serial.println(analogRead(EMGPIN));
+#endif
 }
 
 void writeSerial() {
@@ -94,34 +98,27 @@ uint8_t fileOpen(int index) {
   // Not currently implemented
 
   tmElements_t tm;
-  String filename = "0000-00-00_0000_";
+  char filename1[19] = "0000-00-00_0000_";
 
   if (RTC.read(tm)) {
-    filename = (String)tmYearToCalendar(tm.Year) + "-";
-    filename += (String)tm.Month + "-";
-    filename += (String)tm.Day + "_";
-    filename += (String)tm.Hour;
-    filename += (String)tm.Minute + "_";
+    sprintf(filename1, "%4d-%02d-%02d_%02d%02d_",tmYearToCalendar(tm.Year), tm.Month, tm.Day, tm.Hour, tm.Minute);
   }
 
   uint8_t i = 0;
-  while (sd.exists(filename + (String)i + ".csv")) {
-    i++;
+  sprintf(filename1[16], "%02d.csv",i);
+  while (sd.exists(filename1)) {
+    sprintf(filename1[16], "%02d.csv",++i);
   }
-  filename += (String)i + ".csv";
-
-  char fname[filename.length() + 1] = {0};
-  filename.toCharArray(fname, filename.length() + 1);
 
 #ifdef DEBUG
   Serial.print("Recording to ");
-  Serial.println(fname);
+  Serial.println(filename1);
 #endif
 
-  if (!file.open(fname, O_RDWR | O_CREAT)) return 0;
-  for (uint8_t i = 0; i < 7; i++) {
+  if (!file.open(filename1, O_RDWR | O_CREAT)) return 0;
+  for (uint8_t i = 0; i < 8; i++) {
     file.print(dLabel[i]);
-    if (i < 6) file.print(',');
+    if (i < 7) file.print(',');
   }
   if (!file.print(F("\r\n"))) Serial.println("File write failed"); else Serial.println("File write successful");
 
@@ -154,7 +151,7 @@ uint8_t dataSet() {
     clearSet();
   }
 
-  dSet[dNum] = {rec, motCur, mode, pressure, avgPressure, btn, sensitivity};
+  dSet[dNum] = {((float)rec/86400000.0f), motCur + 3000, mode, pressure, avgPressure, btn * 250 + 2000, sensitivity, analogRead(EMGPIN)};
   dNum++;
   return 0;
 }
@@ -174,6 +171,8 @@ bool dataWrite() {
     file.print((String)dSet[i].btn);
     file.print(',');
     file.print((String)dSet[i].sensitivity);
+    file.print(',');
+    file.print((String)dSet[i].emg);
     if (!file.print(F("\r\n"))) {
       Serial.println("SD card write failed.");
       return false;
@@ -299,6 +298,8 @@ void parseRx() {
     Serial.print(' ');
     Serial.print(avgPressure);
     Serial.print(' ');
-    Serial.println(sensitivity);
+    Serial.print(sensitivity);
+    Serial.print(' ');
+    Serial.println(analogRead(EMGPIN));
 #endif
 }
